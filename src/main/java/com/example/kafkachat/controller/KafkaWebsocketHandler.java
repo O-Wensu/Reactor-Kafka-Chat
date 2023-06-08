@@ -13,7 +13,10 @@ import org.springframework.web.reactive.socket.WebSocketSession;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.kafka.receiver.KafkaReceiver;
+import reactor.kafka.receiver.ReceiverOptions;
 import reactor.kafka.receiver.ReceiverRecord;
+import reactor.kafka.receiver.internals.ConsumerFactory;
+import reactor.kafka.receiver.internals.DefaultKafkaReceiver;
 import reactor.kafka.sender.KafkaSender;
 import reactor.kafka.sender.SenderRecord;
 import reactor.kafka.sender.SenderResult;
@@ -22,6 +25,8 @@ import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -30,19 +35,12 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class KafkaWebsocketHandler implements WebSocketHandler {
 
-    private final KafkaReceiver<String, String> kafkaReceiver;
+    private static final String BOOTSTRAP_SERVERS = "localhost:9092";
     private final KafkaSender<String, String> kafkaSender;
     private final DefaultDataBufferFactory bufferFactory;
+    private KafkaReceiver<String, String> kafkaReceiver;
     private Flux<ReceiverRecord<String, String>> receiverKafkaFlux = null;
     private Flux<String> unfilteredTextFlux = null;
-
-    @PostConstruct
-    public void createKafkaReceiver() {
-        System.out.println("KafkaEventsWebsocketHandler:: createKafkaReceiver");
-
-        receiverKafkaFlux = kafkaReceiver.receive().publish().autoConnect(0);
-        unfilteredTextFlux = receiverKafkaFlux.doOnNext(r -> r.receiverOffset().acknowledge()).map(ReceiverRecord::value);
-    }
 
     @Override
     public Mono<Void> handle(WebSocketSession session) {
@@ -52,14 +50,15 @@ public class KafkaWebsocketHandler implements WebSocketHandler {
             Map<String, String> queryParams = parseQuery(session.getHandshakeInfo().getUri().getQuery());
             String chattingAddress = queryParams.get("chattingAddress");
             log.info("chattingAddress: " + chattingAddress);
+            createKafkaReceiver(chattingAddress, username);
 
             Flux<String> receivedMessages = session.receive().map(WebSocketMessage::getPayloadAsText);
 
             receivedMessages
                     .flatMap(record -> {
                         SenderRecord<String, String, Integer> senderRecord =
-                                SenderRecord.create(new ProducerRecord<>("test", null, record), 1);
-                                return kafkaSender.send(Mono.just(senderRecord))
+                                SenderRecord.create(new ProducerRecord<>(chattingAddress, null, prefixUsername), 1);
+                        return kafkaSender.send(Mono.just(senderRecord))
                                 .doOnNext(result -> {
                                     if (result instanceof SenderResult) {
                                         SenderResult<Integer> senderResult = (SenderResult<Integer>) result;
@@ -78,11 +77,7 @@ public class KafkaWebsocketHandler implements WebSocketHandler {
                         kafkaSender.send(Flux.empty()).subscribe();
                     }).subscribe();
 
-            Flux<String> filteredTextFlux = unfilteredTextFlux;
-            if (chattingAddress != null)
-                filteredTextFlux = unfilteredTextFlux.filter(record -> record.contains(chattingAddress));
-
-            final Flux<String> composedTextFlux = filteredTextFlux;
+            final Flux<String> composedTextFlux = unfilteredTextFlux;
 
             return session.send(
                     composedTextFlux
@@ -95,6 +90,28 @@ public class KafkaWebsocketHandler implements WebSocketHandler {
         return Mono.empty();
     }
 
+    public void createKafkaReceiver(String chattingAddress, String username) {
+        System.out.println("KafkaEventsWebsocketHandler:: createKafkaReceiver");
+
+        kafkaReceiver = KafkaReceiver(chattingAddress, username);
+        receiverKafkaFlux = kafkaReceiver.receive().publish().autoConnect(0);
+        unfilteredTextFlux = receiverKafkaFlux.doOnNext(r -> r.receiverOffset().acknowledge()).map(ReceiverRecord::value);
+    }
+
+    public KafkaReceiver KafkaReceiver(String chattingAddress, String username) {
+        System.out.println("SpringSSEConfiguration:: KafkaReceiver");
+
+        Map<String, Object> props = new HashMap<>();
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, username + LocalDateTime.now());
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVERS);
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, true);
+
+        return new DefaultKafkaReceiver(ConsumerFactory.INSTANCE, ReceiverOptions.create(props)
+                .subscription(Collections.singleton(chattingAddress)));
+    }
 
     private Map<String, String> parseQuery(String query) throws UnsupportedEncodingException {
         System.out.println("KafkaEventsWebsocketHandler:: parseQuery");

@@ -21,9 +21,7 @@ import java.util.Map;
 @Configuration
 @AllArgsConstructor
 public class SpringSSEConfiguration {
-    private static final String TOPIC = "test";
     private static final String BOOTSTRAP_SERVERS = "localhost:9092";
-    // private static final String CLIENT_ID_CONFIG = "my-app-id";
     private static final String GROUP_ID_CONFIG = "testGroupId";
 
     @Bean("KafkaSender")
@@ -37,21 +35,5 @@ public class SpringSSEConfiguration {
 
         SenderOptions<String, String> senderOptions = SenderOptions.create(props);
         return KafkaSender.create(senderOptions);
-    }
-
-    @Bean
-    public KafkaReceiver KafkaReceiver() {
-        System.out.println("SpringSSEConfiguration:: KafkaReceiver");
-
-        Map<String, Object> props = new HashMap<>();
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, GROUP_ID_CONFIG);
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVERS);
-        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, true);
-
-        return new DefaultKafkaReceiver(ConsumerFactory.INSTANCE, ReceiverOptions.create(props)
-                .subscription(Collections.singleton(TOPIC)));
     }
 }

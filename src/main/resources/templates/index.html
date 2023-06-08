@@ -18,8 +18,7 @@
                 addEvent("Opened websocket");
 
                 socket.onmessage = function(event) {
-                    console.log("on message 작동!");
-                    addEvent("Recieved: " + event.data);
+                    addEvent(event.data);
                 };
 
                 socket.onclose = function(event) {
