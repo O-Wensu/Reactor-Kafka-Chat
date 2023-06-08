@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+</head>
+<script>
+    var socket;
+    var socketEndpoint;
+    function handleConnectButton(e) {
+        if(socket && socket.readyState != WebSocket.CLOSED) {
+            addEvent("Connection already created. State: " + stateToString(socket.readyState));
+            return;
+        } else {
+
+            openWebsocket().then(function(result) {
+                socket = result;
+                document.getElementById('connectionStatus').innerHTML = "Connected to: " + socketEndpoint;
+                addEvent("Opened websocket");
+
+                socket.onmessage = function(event) {
+                    console.log("on message 작동!");
+                    addEvent("Recieved: " + event.data);
+                };
+
+                socket.onclose = function(event) {
+                    document.getElementById('connectionStatus').innerHTML = "Not Connected";
+                    addEvent("Websocket was closed");
+                    addEvent("-------------------------------------");
+                };
+            }, function(err) {
+                addEvent("err " + err);
+            })
+
+        }
+    }
+    function stateToString(socketState) {
+        switch(socketState) {
+            case 0: return "CONNECTING";
+            case 1: return "OPEN";
+            case 2: return "CLOSING";
+            case 3: return "CLOSED";
+
+        }
+        return "UNKNOWN";
+    }
+    function handleDisconnectButton(e) {
+        if(!socket || socket.readyState != WebSocket.OPEN) {
+            return;
+        }
+        socket.close();
+    }
+    function openWebsocket() {
+
+        return new Promise(function(resolve, reject) {
+            let endpoint = document.getElementById("hostEndpointInput").value;
+            socketEndpoint = endpoint;
+
+            let localSocket = new WebSocket(endpoint);
+
+            localSocket.onopen = function (event) {
+                resolve(this);
+            };
+        });
+    }
+    function assembleQueryFromFormFields() {
+        let query = "";
+        let paramName1 = document.getElementById("filterParamName").value;
+        if(paramName1) {
+            paramValue1 = document.getElementById("filterParamValue").value;
+        }
+        if(paramName1 && paramValue1) {
+            query += paramName1 + "=" + paramValue1
+        }
+        return query;
+    }
+
+    function clearEventsBox() {
+        document.getElementById('chatList').innerHTML = "no events<br>\n";
+    }
+    function addEvent(eventText) {
+        var eventsDiv = document.getElementById('chatList');
+        var currentContents = eventsDiv.innerHTML;
+        eventsDiv.innerHTML = currentContents + eventText + "<br>\n";
+        eventsDiv.scrollTop = eventsDiv.scrollHeight;
+    }
+    function init() {
+        clearEventsBox();
+
+    }
+    function handleSend(e) {
+        if(!socket || socket.readyState != WebSocket.OPEN) {
+            addEvent("Can't send - socket is not connected!")
+            return;
+        }
+        socket.send(document.getElementById("eventPayload").value);
+    }
+</script>
+<style>
+    .dashboardLayout {
+        display: flex;
+    }
+    .row {
+        display: flex;
+        flex-wrap: nowrap;
+    }
+    .rowLabel {
+
+    }
+    .connectionStatus {
+
+    }
+    .expandableList {
+
+    }
+    .buttonControls {
+        height: 30px;
+    }
+
+    .eventBox
+    {
+        height: 300px;
+        width: 100%;
+        /* background-color:#CCC; */
+        overflow: auto;
+        position: relative;
+        margin-left: -5px;
+        border-style: inset;
+        border: 1px solid black;
+    }
+
+    #hostEndpointInput
+    {
+        width: 400
+    }
+</style>
+<body onLoad="init()">
+<div class="dashboardLayout">
+    <form>
+        <div class="row"><div class="rowLabel" id="hostEndpointLabel">Websocket Endpoint:</div><div class="hostInfo"><input type="text" id="hostEndpointInput" name="hostEndpointInput" value="ws://localhost:8080/chat"/></div> </div>
+        <div class="row" id="connectionStatus">Not Connected</div>
+        <div class="row">
+            <div class="controls">
+                <input type="button" id="connectButton" class="buttonControls" value="Connect" onClick="handleConnectButton(this)"/>
+                <input type="button" id="disconnectButton" class="buttonControls" value="Disconnect" onClick="handleDisconnectButton(this)"/>
+            </div>
+        </div>
+        <div>
+            Message:
+        </div>
+        <div class="row" id="eventControls">
+            <textarea rows="3" id="eventPayload" name="eventPayload"></textarea>
+            <input type="button" class="buttonControls" id="sendButton" value="Send" onClick="handleSend(this)"/>
+        </div>
+
+        <div class="eventBox" id="chatList">
+        </div>
+
+    </form>
+</div>
+
+</body>
+</html>
